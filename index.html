@@ -93,7 +93,7 @@
 
 <div id="message">
     <h1>KORA</h1>
-    <p>Pilot Kora's Vessel through the Deep Space Void!</p>
+    <p>Pilot Kora's Vessel through the Adaptive Deep Space Void!</p>
     <button id="start">ENGAGE THRUSTERS</button>
 </div>
 
@@ -112,6 +112,10 @@ let score = 0;
 let lives = 3;
 let speed = 3;
 let keys = {};
+
+// Screen Scale Factor for dynamic responsive density
+let scaleFactor = 1;
+let spawnChanceModifier = 1;
 
 const ACCEL = 0.8;
 const FRICTION = 0.92;
@@ -135,6 +139,10 @@ let spaceObjects = [];
 function resize() {
     W = canvas.width = innerWidth;
     H = canvas.height = innerHeight;
+
+    // Adjust scaling factors based on screen width (Reference width: 600px)
+    scaleFactor = Math.max(1, W / 600);
+    spawnChanceModifier = Math.min(3.5, W / 400); // Higher density for wide screens
 
     if (!playing) {
         player.x = W / 2;
@@ -170,14 +178,13 @@ canvas.addEventListener("touchmove", e => {
 
 startButton.onclick = startGame;
 
-// 🪐 ব্যাকগ্রাউন্ডে প্ল্যানেট এবং ব্ল্যাকহোল তৈরি
 function initSpaceObjects() {
     spaceObjects = [
         {
             type: "blackhole",
             x: W * 0.25,
             y: H * 0.3,
-            size: 45,
+            size: 45 * Math.min(1.5, scaleFactor),
             rotation: 0,
             speed: 0.2
         },
@@ -185,7 +192,7 @@ function initSpaceObjects() {
             type: "ring_planet",
             x: W * 0.8,
             y: H * 0.2,
-            size: 55,
+            size: 55 * Math.min(1.5, scaleFactor),
             color1: "#e2e8f0",
             color2: "#475569",
             ringColor: "rgba(148, 163, 184, 0.4)",
@@ -195,7 +202,7 @@ function initSpaceObjects() {
             type: "gas_giant",
             x: W * 0.15,
             y: H * 0.75,
-            size: 40,
+            size: 40 * Math.min(1.5, scaleFactor),
             color1: "#f97316",
             color2: "#7c2d12",
             speed: 0.4
@@ -207,7 +214,7 @@ function startGame() {
     playing = true;
     score = 0;
     lives = 3;
-    speed = 3;
+    speed = 3.5 * Math.sqrt(scaleFactor); // Base speed scales with screen dimension
     stars = [];
     meteors = [];
     particles = [];
@@ -237,14 +244,15 @@ function spawnStar() {
 }
 
 function spawnMeteor() {
-    const size = 22 + Math.random() * 24;
+    // Dynamic size relative to screen scale factor
+    const baseSize = (20 + Math.random() * 22) * Math.min(1.4, scaleFactor);
     const numPoints = 7 + Math.floor(Math.random() * 5);
     const points = [];
     const craters = [];
 
     for (let i = 0; i < numPoints; i++) {
         const angle = (i / numPoints) * Math.PI * 2;
-        const dist = size * (0.75 + Math.random() * 0.5);
+        const dist = baseSize * (0.75 + Math.random() * 0.5);
         points.push({
             x: Math.cos(angle) * dist,
             y: Math.sin(angle) * dist
@@ -254,9 +262,9 @@ function spawnMeteor() {
     const craterCount = Math.floor(Math.random() * 3) + 1;
     for (let i = 0; i < craterCount; i++) {
         craters.push({
-            x: (Math.random() - 0.5) * (size * 0.8),
-            y: (Math.random() - 0.5) * (size * 0.8),
-            r: 3 + Math.random() * (size * 0.25)
+            x: (Math.random() - 0.5) * (baseSize * 0.8),
+            y: (Math.random() - 0.5) * (baseSize * 0.8),
+            r: 3 + Math.random() * (baseSize * 0.22)
         });
     }
 
@@ -265,14 +273,14 @@ function spawnMeteor() {
 
     meteors.push({
         x: Math.random() * (W - 60) + 30,
-        y: -size * 2,
-        size,
+        y: -baseSize * 2,
+        size: baseSize,
         points,
         craters,
         baseColor,
         rotation: Math.random() * Math.PI * 2,
         rotSpeed: (Math.random() - 0.5) * 0.05,
-        speed: speed + Math.random() * 2.5
+        speed: speed + Math.random() * (2 * Math.sqrt(scaleFactor))
     });
 }
 
@@ -326,7 +334,6 @@ function update() {
     exhaustTrail.forEach(t => { t.y += 3; t.life--; });
     exhaustTrail = exhaustTrail.filter(t => t.life > 0);
 
-    // ব্যাকগ্রাউন্ড অবজেক্টের মুভমেন্ট
     spaceObjects.forEach(obj => {
         obj.y += obj.speed;
         if (obj.type === "blackhole") obj.rotation += 0.01;
@@ -336,8 +343,9 @@ function update() {
         }
     });
 
-    if (Math.random() < .025) spawnStar();
-    if (Math.random() < .02) spawnMeteor();
+    // Dynamic obstacle spawn probability based on screen scale
+    if (Math.random() < .025 * spawnChanceModifier) spawnStar();
+    if (Math.random() < .018 * spawnChanceModifier) spawnMeteor();
 
     stars.forEach(star => {
         star.y += speed;
@@ -375,13 +383,13 @@ function update() {
     });
     particles = particles.filter(p => p.life > 0);
 
-    speed += .001;
+    // Dynamic speed ramp-up
+    speed += .0012 * Math.sqrt(scaleFactor);
 }
 
 function drawBackground() {
-    // ১. ব্যাকগ্রাউন্ড তারা
     ctx.fillStyle = "#ffffff";
-    for (let i = 0; i < 90; i++) {
+    for (let i = 0; i < 110; i++) {
         const x = (i * 137) % W;
         const y = (i * 83) % H;
         const size = (i % 3) + 1;
@@ -391,13 +399,11 @@ function drawBackground() {
     }
     ctx.globalAlpha = 1;
 
-    // ২. গ্রহ ও ব্ল্যাকহোল রেন্ডারিং
     spaceObjects.forEach(obj => {
         ctx.save();
         ctx.translate(obj.x, obj.y);
 
         if (obj.type === "blackhole") {
-            // ব্ল্যাকহোল অ্যাক্রেশন ডিস্ক গ্লো
             const grad = ctx.createRadialGradient(0, 0, obj.size * 0.2, 0, 0, obj.size * 2);
             grad.addColorStop(0, '#000000');
             grad.addColorStop(0.25, '#000000');
@@ -410,14 +416,12 @@ function drawBackground() {
             ctx.arc(0, 0, obj.size * 2, 0, Math.PI * 2);
             ctx.fill();
 
-            // ইভেন্ট হরাইজন (কালো কেন্দ্র)
             ctx.fillStyle = "#000000";
             ctx.beginPath();
             ctx.arc(0, 0, obj.size * 0.35, 0, Math.PI * 2);
             ctx.fill();
         } 
         else if (obj.type === "ring_planet") {
-            // রিং
             ctx.save();
             ctx.scale(1, 0.3);
             ctx.strokeStyle = obj.ringColor;
@@ -427,7 +431,6 @@ function drawBackground() {
             ctx.stroke();
             ctx.restore();
 
-            // গ্রহের বডি (Gradient Shader)
             const pGrad = ctx.createLinearGradient(-obj.size, -obj.size, obj.size, obj.size);
             pGrad.addColorStop(0, obj.color1);
             pGrad.addColorStop(1, obj.color2);
