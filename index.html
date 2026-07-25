@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kora Sky Run: Deep Space Edition</title>
+
+<style>
+    * {
+        box-sizing: border-box;
+        user-select: none;
+    }
+
+    body {
+        margin: 0;
+        overflow: hidden;
+        background: #02040a;
+        font-family: Arial, sans-serif;
+        color: white;
+    }
+
+    canvas {
+        display: block;
+        background: radial-gradient(circle at center, #0a0f24 0%, #02040a 100%);
+    }
+
+    #ui {
+        position: fixed;
+        top: 15px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: min(92%, 700px);
+        display: flex;
+        justify-content: space-between;
+        font-size: 20px;
+        font-weight: bold;
+        text-shadow: 0 2px 5px #000;
+        pointer-events: none;
+    }
+
+    #message {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        text-align: center;
+        background: rgba(2, 4, 10, .85);
+    }
+
+    #message h1 {
+        margin: 0;
+        font-size: clamp(40px, 10vw, 80px);
+        color: #38bdf8;
+        text-shadow: 0 0 25px rgba(56, 189, 248, 0.6);
+    }
+
+    #message p {
+        font-size: 18px;
+        margin: 10px 20px 25px;
+        color: #94a3b8;
+    }
+
+    button {
+        border: 0;
+        border-radius: 14px;
+        padding: 14px 28px;
+        background: #0284c7;
+        color: white;
+        font-size: 18px;
+        font-weight: bold;
+        cursor: pointer;
+        box-shadow: 0 5px 0 #0369a1;
+        transition: transform 0.1s;
+    }
+
+    button:active {
+        transform: translateY(4px);
+        box-shadow: 0 1px 0 #0369a1;
+    }
+</style>
+</head>
+
+<body>
+
+<canvas id="game"></canvas>
+
+<div id="ui">
+    <span>⭐ Score: <b id="score">0</b></span>
+    <span>❤️ Lives: <b id="lives">3</b></span>
+</div>
+
+<div id="message">
+    <h1>KORA</h1>
+    <p>Pilot Kora's Vessel through the Deep Space Void!</p>
+    <button id="start">ENGAGE THRUSTERS</button>
+</div>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+const scoreText = document.getElementById("score");
+const livesText = document.getElementById("lives");
+const message = document.getElementById("message");
+const startButton = document.getElementById("start");
+
+let W, H;
+let playing = false;
+let score = 0;
+let lives = 3;
+let speed = 3;
+let keys = {};
+
+const ACCEL = 0.8;
+const FRICTION = 0.92;
+const MAX_SPEED = 9;
+
+const player = {
+    x: 0,
+    y: 0,
+    vx: 0,
+    vy: 0,
+    angle: 0,
+    size: 28
+};
+
+let stars = [];
+let meteors = [];
+let particles = [];
+let exhaustTrail = [];
+let spaceObjects = [];
+
+function resize() {
+    W = canvas.width = innerWidth;
+    H = canvas.height = innerHeight;
+
+    if (!playing) {
+        player.x = W / 2;
+        player.y = H - 120;
+        initSpaceObjects();
+        draw();
+    }
+}
+
+addEventListener("resize", resize);
+
+addEventListener("keydown", e => {
+    keys[e.key.toLowerCase()] = true;
+
+    if (e.key === " " || e.code === "Space") {
+        if (!playing) {
+            e.preventDefault();
+            startGame();
+        }
+    }
+});
+
+addEventListener("keyup", e => {
+    keys[e.key.toLowerCase()] = false;
+});
+
+canvas.addEventListener("touchmove", e => {
+    const touch = e.touches[0];
+    player.vx = (touch.clientX - player.x) * 0.1;
+    player.vy = (touch.clientY - player.y) * 0.1;
+    e.preventDefault();
+}, { passive: false });
+
+startButton.onclick = startGame;
+
+// 🪐 ব্যাকগ্রাউন্ডে প্ল্যানেট এবং ব্ল্যাকহোল তৈরি
+function initSpaceObjects() {
+    spaceObjects = [
+        {
+            type: "blackhole",
+            x: W * 0.25,
+            y: H * 0.3,
+            size: 45,
+            rotation: 0,
+            speed: 0.2
+        },
+        {
+            type: "ring_planet",
+            x: W * 0.8,
+            y: H * 0.2,
+            size: 55,
+            color1: "#e2e8f0",
+            color2: "#475569",
+            ringColor: "rgba(148, 163, 184, 0.4)",
+            speed: 0.3
+        },
+        {
+            type: "gas_giant",
+            x: W * 0.15,
+            y: H * 0.75,
+            size: 40,
+            color1: "#f97316",
+            color2: "#7c2d12",
+            speed: 0.4
+        }
+    ];
+}
+
+function startGame() {
+    playing = true;
+    score = 0;
+    lives = 3;
+    speed = 3;
+    stars = [];
+    meteors = [];
+    particles = [];
+    exhaustTrail = [];
+
+    player.x = W / 2;
+    player.y = H - 120;
+    player.vx = 0;
+    player.vy = 0;
+    player.angle = 0;
+
+    scoreText.textContent = score;
+    livesText.textContent = lives;
+    message.style.display = "none";
+
+    initSpaceObjects();
+    requestAnimationFrame(gameLoop);
+}
+
+function spawnStar() {
+    stars.push({
+        x: Math.random() * (W - 40) + 20,
+        y: -30,
+        size: 13,
+        rotation: 0
+    });
+}
+
+function spawnMeteor() {
+    const size = 22 + Math.random() * 24;
+    const numPoints = 7 + Math.floor(Math.random() * 5);
+    const points = [];
+    const craters = [];
+
+    for (let i = 0; i < numPoints; i++) {
+        const angle = (i / numPoints) * Math.PI * 2;
+        const dist = size * (0.75 + Math.random() * 0.5);
+        points.push({
+            x: Math.cos(angle) * dist,
+            y: Math.sin(angle) * dist
+        });
+    }
+
+    const craterCount = Math.floor(Math.random() * 3) + 1;
+    for (let i = 0; i < craterCount; i++) {
+        craters.push({
+            x: (Math.random() - 0.5) * (size * 0.8),
+            y: (Math.random() - 0.5) * (size * 0.8),
+            r: 3 + Math.random() * (size * 0.25)
+        });
+    }
+
+    const shades = ["#2d3748", "#1a202c", "#3f4e65", "#171923"];
+    const baseColor = shades[Math.floor(Math.random() * shades.length)];
+
+    meteors.push({
+        x: Math.random() * (W - 60) + 30,
+        y: -size * 2,
+        size,
+        points,
+        craters,
+        baseColor,
+        rotation: Math.random() * Math.PI * 2,
+        rotSpeed: (Math.random() - 0.5) * 0.05,
+        speed: speed + Math.random() * 2.5
+    });
+}
+
+function addParticles(x, y, color) {
+    for (let i = 0; i < 16; i++) {
+        particles.push({
+            x,
+            y,
+            dx: (Math.random() - .5) * 8,
+            dy: (Math.random() - .5) * 8,
+            life: 35,
+            color
+        });
+    }
+}
+
+function isTouching(a, b) {
+    return Math.hypot(a.x - b.x, a.y - b.y) < a.size + b.size;
+}
+
+function update() {
+    if (keys["arrowleft"] || keys["a"]) player.vx -= ACCEL;
+    if (keys["arrowright"] || keys["d"]) player.vx += ACCEL;
+    if (keys["arrowup"] || keys["w"]) player.vy -= ACCEL;
+    if (keys["arrowdown"] || keys["s"]) player.vy += ACCEL;
+
+    player.vx *= FRICTION;
+    player.vy *= FRICTION;
+
+    player.vx = Math.max(-MAX_SPEED, Math.min(MAX_SPEED, player.vx));
+    player.vy = Math.max(-MAX_SPEED, Math.min(MAX_SPEED, player.vy));
+
+    player.x += player.vx;
+    player.y += player.vy;
+    player.angle = player.vx * 0.05;
+
+    if (player.x < player.size) { player.x = player.size; player.vx *= -0.5; }
+    if (player.x > W - player.size) { player.x = W - player.size; player.vx *= -0.5; }
+    if (player.y < player.size) { player.y = player.size; player.vy *= -0.5; }
+    if (player.y > H - player.size) { player.y = H - player.size; player.vy *= -0.5; }
+
+    if (Math.abs(player.vx) > 0.5 || Math.abs(player.vy) > 0.5 || keys["w"] || keys["arrowup"]) {
+        exhaustTrail.push({
+            x: player.x - Math.sin(player.angle) * 10 + (Math.random() - 0.5) * 4,
+            y: player.y + 25 + (Math.random() - 0.5) * 4,
+            life: 20,
+            size: 4 + Math.random() * 4
+        });
+    }
+
+    exhaustTrail.forEach(t => { t.y += 3; t.life--; });
+    exhaustTrail = exhaustTrail.filter(t => t.life > 0);
+
+    // ব্যাকগ্রাউন্ড অবজেক্টের মুভমেন্ট
+    spaceObjects.forEach(obj => {
+        obj.y += obj.speed;
+        if (obj.type === "blackhole") obj.rotation += 0.01;
+        if (obj.y > H + obj.size * 2) {
+            obj.y = -obj.size * 2;
+            obj.x = Math.random() * W;
+        }
+    });
+
+    if (Math.random() < .025) spawnStar();
+    if (Math.random() < .02) spawnMeteor();
+
+    stars.forEach(star => {
+        star.y += speed;
+        star.rotation += .08;
+
+        if (isTouching(player, star)) {
+            score++;
+            scoreText.textContent = score;
+            addParticles(star.x, star.y, "#38bdf8");
+            star.y = H + 200;
+        }
+    });
+
+    meteors.forEach(meteor => {
+        meteor.y += meteor.speed;
+        meteor.rotation += meteor.rotSpeed;
+
+        if (isTouching(player, meteor)) {
+            lives--;
+            livesText.textContent = lives;
+            addParticles(player.x, player.y, "#f43f5e");
+            meteor.y = H + 200;
+
+            if (lives <= 0) endGame();
+        }
+    });
+
+    stars = stars.filter(star => star.y < H + 100);
+    meteors = meteors.filter(meteor => meteor.y < H + 200);
+
+    particles.forEach(p => {
+        p.x += p.dx;
+        p.y += p.dy;
+        p.life--;
+    });
+    particles = particles.filter(p => p.life > 0);
+
+    speed += .001;
+}
+
+function drawBackground() {
+    // ১. ব্যাকগ্রাউন্ড তারা
+    ctx.fillStyle = "#ffffff";
+    for (let i = 0; i < 90; i++) {
+        const x = (i * 137) % W;
+        const y = (i * 83) % H;
+        const size = (i % 3) + 1;
+
+        ctx.globalAlpha = .2 + (i % 5) / 10;
+        ctx.fillRect(x, y, size, size);
+    }
+    ctx.globalAlpha = 1;
+
+    // ২. গ্রহ ও ব্ল্যাকহোল রেন্ডারিং
+    spaceObjects.forEach(obj => {
+        ctx.save();
+        ctx.translate(obj.x, obj.y);
+
+        if (obj.type === "blackhole") {
+            // ব্ল্যাকহোল অ্যাক্রেশন ডিস্ক গ্লো
+            const grad = ctx.createRadialGradient(0, 0, obj.size * 0.2, 0, 0, obj.size * 2);
+            grad.addColorStop(0, '#000000');
+            grad.addColorStop(0.25, '#000000');
+            grad.addColorStop(0.35, '#c084fc');
+            grad.addColorStop(0.6, '#38bdf8');
+            grad.addColorStop(1, 'transparent');
+
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.arc(0, 0, obj.size * 2, 0, Math.PI * 2);
+            ctx.fill();
+
+            // ইভেন্ট হরাইজন (কালো কেন্দ্র)
+            ctx.fillStyle = "#000000";
+            ctx.beginPath();
+            ctx.arc(0, 0, obj.size * 0.35, 0, Math.PI * 2);
+            ctx.fill();
+        } 
+        else if (obj.type === "ring_planet") {
+            // রিং
+            ctx.save();
+            ctx.scale(1, 0.3);
+            ctx.strokeStyle = obj.ringColor;
+            ctx.lineWidth = 14;
+            ctx.beginPath();
+            ctx.arc(0, 0, obj.size * 1.6, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+
+            // গ্রহের বডি (Gradient Shader)
+            const pGrad = ctx.createLinearGradient(-obj.size, -obj.size, obj.size, obj.size);
+            pGrad.addColorStop(0, obj.color1);
+            pGrad.addColorStop(1, obj.color2);
+            ctx.fillStyle = pGrad;
+            ctx.beginPath();
+            ctx.arc(0, 0, obj.size, 0, Math.PI * 2);
+            ctx.fill();
+        } 
+        else if (obj.type === "gas_giant") {
+            const pGrad = ctx.createRadialGradient(-obj.size*0.3, -obj.size*0.3, obj.size*0.1, 0, 0, obj.size);
+            pGrad.addColorStop(0, obj.color1);
+            pGrad.addColorStop(1, obj.color2);
+            ctx.fillStyle = pGrad;
+            ctx.beginPath();
+            ctx.arc(0, 0, obj.size, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        ctx.restore();
+    });
+}
+
+function drawPlayer() {
+    exhaustTrail.forEach(t => {
+        ctx.fillStyle = `rgba(56, 189, 248, ${t.life / 20})`;
+        ctx.beginPath();
+        ctx.arc(t.x, t.y, t.size, 0, Math.PI * 2);
+        ctx.fill();
+    });
+
+    ctx.save();
+    ctx.translate(player.x, player.y);
+    ctx.rotate(player.angle);
+
+    ctx.shadowColor = "#38bdf8";
+    ctx.shadowBlur = 15;
+
+    ctx.fillStyle = "#0f172a";
+    ctx.strokeStyle = "#38bdf8";
+    ctx.lineWidth = 2;
+
+    ctx.beginPath();
+    ctx.moveTo(0, -38);
+    ctx.lineTo(28, 20);
+    ctx.lineTo(12, 14);
+    ctx.lineTo(0, 24);
+    ctx.lineTo(-12, 14);
+    ctx.lineTo(-28, 20);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.strokeStyle = "#0284c7";
+    ctx.beginPath();
+    ctx.moveTo(0, -20);
+    ctx.lineTo(20, 15);
+    ctx.moveTo(0, -20);
+    ctx.lineTo(-20, 15);
+    ctx.stroke();
+
+    ctx.shadowBlur = 12;
+    ctx.shadowColor = "#38bdf8";
+    ctx.fillStyle = "#0284c7";
+    ctx.beginPath();
+    ctx.ellipse(0, -10, 5, 12, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = "#ffffff";
+    ctx.beginPath();
+    ctx.ellipse(-1, -14, 1.5, 4, -0.3, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+}
+
+function drawStar(star) {
+    ctx.save();
+    ctx.translate(star.x, star.y);
+    ctx.rotate(star.rotation);
+    ctx.shadowColor = "#ffe66d";
+    ctx.shadowBlur = 15;
+    ctx.fillStyle = "#ffe66d";
+
+    ctx.beginPath();
+    for (let i = 0; i < 10; i++) {
+        const angle = i * Math.PI / 5;
+        const radius = i % 2 === 0 ? star.size : star.size / 2;
+        ctx.lineTo(Math.cos(angle) * radius, Math.sin(angle) * radius);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+}
+
+function drawMeteor(meteor) {
+    ctx.save();
+    ctx.translate(meteor.x, meteor.y);
+    ctx.rotate(meteor.rotation);
+
+    ctx.shadowColor = "#000000";
+    ctx.shadowBlur = 12;
+
+    ctx.fillStyle = meteor.baseColor;
+    ctx.beginPath();
+    ctx.moveTo(meteor.points[0].x, meteor.points[0].y);
+    for (let i = 1; i < meteor.points.length; i++) {
+        ctx.lineTo(meteor.points[i].x, meteor.points[i].y);
+    }
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = "#64748b";
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    ctx.fillStyle = "#090d16";
+    meteor.craters.forEach(c => {
+        ctx.beginPath();
+        ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.strokeStyle = "#475569";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(c.x + 1, c.y + 1, c.r, 0, Math.PI);
+        ctx.stroke();
+    });
+
+    ctx.restore();
+}
+
+function drawParticles() {
+    particles.forEach(p => {
+        ctx.globalAlpha = p.life / 35;
+        ctx.fillStyle = p.color;
+        ctx.fillRect(p.x, p.y, 4, 4);
+    });
+    ctx.globalAlpha = 1;
+}
+
+function draw() {
+    ctx.clearRect(0, 0, W, H);
+    drawBackground();
+
+    stars.forEach(drawStar);
+    meteors.forEach(drawMeteor);
+    drawParticles();
+
+    if (playing) {
+        drawPlayer();
+    }
+}
+
+function gameLoop() {
+    if (!playing) return;
+
+    update();
+    draw();
+
+    requestAnimationFrame(gameLoop);
+}
+
+function endGame() {
+    playing = false;
+    message.style.display = "flex";
+    message.querySelector("h1").textContent = "MISSION FAILED";
+    message.querySelector("p").textContent =
+        `Kora collected ${score} star${score === 1 ? "" : "s"} before hull destruction!`;
+    startButton.textContent = "RESTART FLIGHT";
+}
+
+resize();
+</script>
+
+</body>
+</html>
